@@ -1,0 +1,134 @@
+name: Cross-platform release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Build version"
+        required: true
+        default: "0.1.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version
+        shell: pwsh
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          $version = if ($env:EVENT_NAME -eq 'push') { $env:REF_NAME -replace '^v', '' } else { $env:INPUT_VERSION }
+          if ($version -notmatch '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$') { throw 'Use a tag such as v1.2.3.' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          path-type: inherit
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+      - name: Build, test, and package
+        shell: msys2 {0}
+        run: bash scripts/build-release.sh "$RELEASE_VERSION" Ninja
+      - name: Test installer lifecycle
+        shell: pwsh
+        run: ./scripts/test-installer.ps1 -Installer "dist/AudioSync-$env:RELEASE_VERSION-windows-x64-setup.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/AudioSync-*
+          if-no-files-found: error
+
+  linux:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+            linuxdeploy_sha: c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+            linuxdeploy_sha: 620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate version
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${REF_NAME#v}"
+          if [[ "$EVENT_NAME" != "push" ]]; then version="$INPUT_VERSION"; fi
+          [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Use a tag such as v1.2.3."; exit 1; }
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build pkg-config libgtk-3-dev libcurl4-openssl-dev libsecret-1-dev libglib2.0-dev libayatana-appindicator3-dev librsvg2-dev libgirepository1.0-dev xvfb dbus-x11 python3-gi
+      - name: Install AppImage tools
+        env:
+          ARCH: ${{ matrix.arch }}
+          LINUXDEPLOY_SHA: ${{ matrix.linuxdeploy_sha }}
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/linuxdeploy.AppImage" "https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-$ARCH.AppImage"
+          echo "$LINUXDEPLOY_SHA  $RUNNER_TEMP/linuxdeploy.AppImage" | sha256sum -c -
+          curl -fsSLo "$RUNNER_TEMP/linuxdeploy-plugin-gtk.sh" "https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/7a3fbc31a9e5075073ff8790f26effbac5f84453/linuxdeploy-plugin-gtk.sh"
+          chmod +x "$RUNNER_TEMP"/linuxdeploy*
+          echo "LINUXDEPLOY=$RUNNER_TEMP/linuxdeploy.AppImage" >> "$GITHUB_ENV"
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Build, test, and package
+        run: bash scripts/build-release.sh "$RELEASE_VERSION" Ninja
+      - name: Test headless build and tray
+        run: |
+          cmake -S . -B build/headless -G Ninja -DAUDIOSYNC_TRAY=OFF
+          cmake --build build/headless --parallel
+          ctest --test-dir build/headless --output-on-failure
+          dbus-run-session -- xvfb-run -a python3 tests/tray_test_linux.py build/release-linux/audiosync
+          dpkg-deb --info dist/*-${{ matrix.arch }}.deb
+          APPIMAGE_EXTRACT_AND_RUN=1 dist/AudioSync-*-${{ matrix.arch }}.AppImage --help
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-release
+          path: dist/AudioSync-*
+          if-no-files-found: error
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/') && github.event_name == 'push'
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "*-release"
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag --title "AudioSync $RELEASE_TAG" --generate-notes
+          fi

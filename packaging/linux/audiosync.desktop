@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AudioSync
+Comment=Watch removable drives and sync audio
+Exec=audiosync watch
+Icon=audiosync
+Terminal=false
+Categories=AudioVideo;Audio;
