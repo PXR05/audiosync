@@ -22,6 +22,16 @@ try {
         if (-not (Test-Path "$installDir\docs\adapters.md")) { throw 'The adapter guide is missing.' }
         if (-not (Test-Path "$installDir\docs\development.md")) { throw 'The development guide is missing.' }
         if (-not (Test-Path $registryPath)) { throw 'The uninstaller was not registered.' }
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $matches = @($userPath -split ';' | Where-Object { $_ -eq $installDir })
+        if ($matches.Count -ne 1) { throw 'The installer did not add exactly one PATH entry.' }
+        & "$installDir\audiosync.exe" sync -d
+        if ($LASTEXITCODE) { throw 'Detached sync could not start.' }
+        $deadline = (Get-Date).AddSeconds(10)
+        while ((Get-Process audiosync -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+            Start-Sleep -Milliseconds 100
+        }
+        if (Get-Process audiosync -ErrorAction SilentlyContinue) { throw 'Detached sync did not finish.' }
         $expected = (Get-FileHash "$projectRoot\build\release\audiosync.exe").Hash
         if ((Get-FileHash "$installDir\audiosync.exe").Hash -ne $expected) { throw 'The installed binary differs from the build.' }
     }
@@ -35,4 +45,7 @@ finally {
 }
 if (Test-Path "$installDir\audiosync.exe") { throw 'Uninstall left the app executable behind.' }
 if (Test-Path $registryPath) { throw 'Uninstall left its registry entry behind.' }
-Write-Host 'PASS: install, reinstall, binary integrity, and uninstall'
+$userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+$matches = @($userPath -split ';' | Where-Object { $_ -eq $installDir })
+if ($matches.Count) { throw 'Uninstall left its PATH entry behind.' }
+Write-Host 'PASS: install, PATH, reinstall, binary integrity, and uninstall'

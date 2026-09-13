@@ -9,7 +9,8 @@ and a system tray watcher.
 ### Windows
 
 Download the file ending in `windows-x64-setup.exe` from the
-[latest release](https://github.com/PXR05/audiosync/releases/latest), then run it.
+[latest release](https://github.com/PXR05/audiosync/releases/latest), then run it. Open a new terminal after
+installation; the installer adds `audiosync` to your user `PATH`.
 
 ### Linux
 
@@ -23,7 +24,8 @@ curl -fsSL https://raw.githubusercontent.com/PXR05/audiosync/main/install.sh | b
 audiosync devices
 audiosync profile add Player --serial YOUR_SERIAL --local "/path/to/Music"
 audiosync sync Player
-audiosync watch
+audiosync watch -d
+audiosync update
 ```
 
 Run `audiosync --help` for command help. Format conversion requires FFmpeg on `PATH`.

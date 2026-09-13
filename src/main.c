@@ -1,4 +1,5 @@
 #include "cli/cli.h"
+#include "platform/detach.h"
 #include <locale.h>
 #ifdef _WIN32
 #include "platform/windows/crashlog.h"
@@ -11,6 +12,7 @@
 #endif
 int main(int argc, char **argv) {
     setlocale(LC_ALL, "");
+    detach_prepare();
 #ifdef _WIN32
     crashlog_install();
     SetConsoleOutputCP(CP_UTF8);

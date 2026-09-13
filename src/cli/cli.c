@@ -3,6 +3,7 @@
 #include "progress.h"
 #include "log.h"
 #include "platform/util.h"
+#include "platform/detach.h"
 #include "platform/runtime.h"
 #include "platform/tray.h"
 #include <stdlib.h>
@@ -23,6 +24,8 @@ static const char *short_option(char c) {
         return "--quiet";
     case 'f':
         return "--follow";
+    case 'd':
+        return "--detach";
     case 'n':
         return "--lines";
     case 'w':
@@ -42,7 +45,8 @@ static const char *canonical(const char *name) {
         return "profile";
     return name;
 }
-static int dispatch(int argc, char **argv, int json, int quiet, int help, int literal) {
+static int dispatch(int argc, char **argv, int json, int quiet, int help, int literal, int detach,
+                    int source_argc, char **source_argv) {
     if (argc == 1)
         return cli_help(NULL);
     const char *command = canonical(argv[1]);
@@ -85,6 +89,8 @@ static int dispatch(int argc, char **argv, int json, int quiet, int help, int li
     int read_profile = !strcmp(command, "list") || !strcmp(command, "show");
     if (json && !(read_profile || !strcmp(command, "devices") || !strcmp(command, "status")))
         return cli_error(command, "--json is only available for devices, profile list/show, and status");
+    if (detach && strcmp(command, "sync") && strcmp(command, "watch"))
+        return cli_error(command, "--detach is only available for sync and watch");
     if (!strcmp(command, "devices"))
         return argc == 2 ? cli_devices(json) : cli_error(command, "unexpected argument '%s'", argv[2]);
     if (!strcmp(command, "config-path")) {
@@ -101,6 +107,8 @@ static int dispatch(int argc, char **argv, int json, int quiet, int help, int li
     }
     if (!strcmp(command, "status") || !strcmp(command, "logs"))
         return cli_observe(argc, argv, json);
+    if (!strcmp(command, "update"))
+        return cli_update(argc, argv, quiet);
     if (!strcmp(command, "sync")) {
         const char *only = NULL;
         if (argc == 4 && (!strcmp(argv[2], "--profile") || !strcmp(argv[2], "--")))
@@ -111,12 +119,20 @@ static int dispatch(int argc, char **argv, int json, int quiet, int help, int li
             return cli_error(command, "expected one selector or --profile NAME");
         if (only && !*only)
             return cli_error(command, "profile selector cannot be empty");
+        if (!detach_is_child() && (detach || cli_is_terminal(stdin))) {
+            int result = detach_run(source_argc, source_argv, detach);
+            return result < 0 ? cli_error(command, "could not start detached process") : result;
+        }
         progress_set(quiet ? NULL : &progress_cli);
         return runtime_sync(only);
     }
     if (!strcmp(command, "watch")) {
         if (argc != 2 && !(argc == 3 && !strcmp(argv[2], "--no-tray")))
             return cli_error(command, "expected watch [--no-tray]");
+        if (!detach_is_child() && (detach || cli_is_terminal(stdin))) {
+            int result = detach_run(source_argc, source_argv, detach);
+            return result < 0 ? cli_error(command, "could not start detached process") : result;
+        }
         if (!runtime_lock(LOCK_WATCH)) {
             fputs("error: watcher already running or unavailable; use 'audiosync status -w' to inspect it\n",
                   stderr);
@@ -224,7 +240,7 @@ int cli_run(int argc, char **argv) {
         result = cli_error(NULL, "option '%s' needs a value", args[count - 1]);
         goto cleanup;
     }
-    int json = 0, quiet = 0, help = 0, version = 0, output = 1;
+    int json = 0, quiet = 0, help = 0, version = 0, detach = 0, output = 1;
     literal = 0;
     for (int i = 1; i < count; ++i) {
         char *arg = args[i];
@@ -240,6 +256,8 @@ int cli_run(int argc, char **argv) {
             version = 1;
         else if (!literal && !strcmp(arg, "--quiet"))
             quiet = 1;
+        else if (!literal && !strcmp(arg, "--detach"))
+            detach = 1;
         else if (!literal && !strcmp(arg, "--json"))
             json = 1;
         else {
@@ -255,7 +273,7 @@ int cli_run(int argc, char **argv) {
         else
             printf("audiosync %s\n", AUDIOSYNC_VERSION);
     } else
-        result = dispatch(output, args, json, quiet, help, literal);
+        result = dispatch(output, args, json, quiet, help, literal, detach, argc, argv);
 cleanup:
     for (int i = 0; i < allocations; ++i)
         free(owned[i]);

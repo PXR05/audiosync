@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-set(AUDIOSYNC_VERSION "0.1.0" CACHE STRING "AudioSync release version")
+set(AUDIOSYNC_VERSION "0.1.1" CACHE STRING "AudioSync release version")
 project(audiosync VERSION ${AUDIOSYNC_VERSION} LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -53,7 +53,8 @@ target_link_libraries(audiosync_lib PUBLIC ${PLATFORM_LIBRARIES})
 add_executable(audiosync
     src/main.c src/sync.c
     src/cli/cli.c src/cli/help.c src/cli/profile.c
-    src/cli/output.c src/cli/observe.c src/cli/progress.c)
+    src/cli/output.c src/cli/observe.c src/cli/progress.c src/cli/update.c
+    src/platform/${PLATFORM}/detach.c src/platform/${PLATFORM}/update.c)
 target_compile_definitions(audiosync PRIVATE AUDIOSYNC_VERSION="${PROJECT_VERSION}")
 target_compile_options(audiosync PRIVATE -Wall -Wextra)
 target_link_libraries(audiosync PRIVATE audiosync_lib)
@@ -114,6 +115,11 @@ if(BUILD_TESTING)
             ${CMAKE_SOURCE_DIR}/tests/run_sync_test.py $<TARGET_FILE:sync_test>)
         add_test(NAME regression_cli COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_SOURCE_DIR}/tests/cli_test.py $<TARGET_FILE:audiosync> $<TARGET_FILE:progress_fixture>)
+        if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            add_test(NAME regression_detach COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/detach_test_linux.py $<TARGET_FILE:audiosync>)
+            set_tests_properties(regression_detach PROPERTIES TIMEOUT 20 LABELS integration)
+        endif()
         set_tests_properties(regression_cli regression_sync PROPERTIES TIMEOUT 60 LABELS integration)
     else()
         add_test(NAME regression_sync COMMAND sync_test)

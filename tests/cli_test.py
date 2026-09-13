@@ -1,11 +1,13 @@
 """Exercise the real CLI with an isolated config and no real destination."""
 
 import ctypes
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -41,13 +43,38 @@ with tempfile.TemporaryDirectory(prefix="audiosync-cli-") as temp:
     assert "watch" in run("--help")
     assert run("-V") == run("--version")
     assert run("--version").startswith("audiosync ")
-    for command in ("devices", "sync", "watch", "status", "logs"):
+    for command in ("devices", "sync", "watch", "status", "logs", "update"):
         assert run("help", command) == run(command, "-h")
     for command in ("add", "set", "list", "show", "rename", "remove"):
         assert run("help", "profile", command) == run("profile", command, "--help")
     assert "Usage:" in run("-qh")
     run("unknown", expected=2)
+    run("devices", "-d", expected=2)
     run("watch", "--unknown", expected=2)
+    run("update", "now", expected=2)
+
+    class UpdateHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'{"tag_name":"v9.9.9"}'
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), UpdateHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    env["AUDIOSYNC_UPDATE_API"] = f"http://127.0.0.1:{server.server_port}"
+    try:
+        assert "9.9.9" in run("update", "--check")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+        del env["AUDIOSYNC_UPDATE_API"]
     assert Path(run("config-path").strip()) == config
     run("devices")
     assert isinstance(json.loads(run("--json", "devices")), list)

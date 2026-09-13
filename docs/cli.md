@@ -16,6 +16,7 @@ Global options can appear before or after a command. Required option values are 
 | `-h, --help` | Command-specific help |
 | `-V, --version` | Version only |
 | `-q, --quiet` | Suppress progress and informational messages; errors remain |
+| `-d, --detach` | Run `sync` or `watch` in the background |
 | `--json` | Structured output for devices, profile list/show, and status |
 
 Commands, flags, and aliases use lowercase, except `-V`. `--` ends option parsing; subsequent values are positional names.
@@ -65,7 +66,9 @@ audiosync sync
 audiosync sync Player
 audiosync sync -p Player
 audiosync sync --profile=Player --quiet
+audiosync sync -d
 audiosync watch
+audiosync watch -d
 audiosync watch --no-tray
 ~~~
 
@@ -73,7 +76,10 @@ A sync selector matches profile name, serial, or label. Omit it to sync all conn
 
 Terminal progress goes to stderr. When stderr is redirected, progress uses ordinary lines without carriage-return animations. `--quiet` suppresses progress and informational messages while retaining failures and the exit code.
 
-The tray menu can sync immediately, pause automatic triggers, manage startup, and exit. Windows shortcuts/login startup run `watch` without retaining a private console window; terminal launches remain attached to the terminal. Headless watch stays in the foreground. On Linux, Ctrl+C or SIGTERM stops the watcher after the active transfer finishes.
+Use `-d` to start `sync` or `watch` in the background. During an attached terminal run, press `d`
+to detach. Follow it later with `audiosync status -w` or `audiosync logs -f`.
+
+The tray menu can sync immediately, pause automatic triggers, manage startup, and exit. Windows shortcuts/login startup run `watch` without retaining a private console window. On Linux, autostart writes `~/.config/autostart/audiosync.desktop` for the current desktop user. Watch starts again after login when autostart is enabled; pause state is not retained across restarts. Headless watch stays in the foreground unless detached. Ctrl+C or SIGTERM stops the watcher after the active transfer finishes.
 
 ## Inspect live progress
 
@@ -103,6 +109,12 @@ audiosync logs --path
 The default is the last 30 lines. `-n/--lines` accepts 0 through 10000. `-f/--follow` reads appended entries and continues across log rotation. Ctrl+C stops following without affecting sync.
 
 The activity log is now `audiosync.log` beside the configuration file on both operating systems. It rotates at approximately 512 KiB, retaining one `audiosync.log.old`. Previous Windows versions wrote to `%TEMP%\audiosync.log`; that historical file is not migrated.
+
+## Updates
+
+`audiosync update --check` reports whether a newer release is available. `audiosync update` replaces an
+installed AppImage on Linux or starts the update installer on Windows. Package-manager and portable archive
+installs should be updated through the same method used to install them.
 
 ## Configuration and scripting
 

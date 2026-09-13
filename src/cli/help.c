@@ -36,12 +36,15 @@ static const help_t commands[] = {
      "audiosync profile rm Player"},
     {"rename", "Rename a saved profile.", "profile rename OLD NEW", "",
      "audiosync profile rename Player Walkman"},
-    {"sync", "Sync once. Omit the selector to sync all connected profiles.", "sync [NAME|SERIAL|LABEL] [-q]",
+    {"sync", "Sync once. Omit the selector to sync all connected profiles.",
+     "sync [NAME|SERIAL|LABEL] [-d] [-q]",
+     "  -d, --detach          Run in the background\n"
      "  -q, --quiet           Suppress progress and informational messages\n"
      "  -p, --profile NAME    Select a profile (alternative to a positional selector)\n",
      "audiosync sync Player"},
-    {"watch", "Run automatic syncing and the tray menu until stopped.", "watch [--no-tray] [-q]",
+    {"watch", "Run automatic syncing and the tray menu until stopped.", "watch [--no-tray] [-d] [-q]",
      "  --no-tray             Stay in the terminal without a tray icon\n"
+     "  -d, --detach          Run in the background\n"
      "  -q, --quiet           Suppress informational messages\n",
      "audiosync watch --no-tray"},
     {"status", "Inspect the running watcher, sync progress, and last result.", "status [-w] [--json]",
@@ -55,7 +58,9 @@ static const help_t commands[] = {
      "audiosync logs -f -n 50"},
     {"config-path", "Print the configuration path.", "config path", "", "audiosync config path"},
     {"autostart", "Enable or disable tray startup at login.", "autostart on|off|status", "",
-     "audiosync autostart on"}};
+     "audiosync autostart on"},
+    {"update", "Install the latest AudioSync release.", "update [--check]",
+     "  --check               Check without installing\n", "audiosync update"}};
 int cli_error(const char *command, const char *format, ...) {
     fputs("error: ", stderr);
     va_list args;
@@ -78,10 +83,12 @@ int cli_help(const char *command) {
              "  status           Inspect or follow a running sync\n"
              "  logs             Read or follow the activity log\n"
              "  config path      Print the configuration path\n"
-             "  autostart        Configure startup at login\n\n"
+             "  autostart        Configure startup at login\n"
+             "  update           Check for and install updates\n\n"
              "Options:\n"
              "  -h, --help       Show help (also: help COMMAND)\n"
              "  -V, --version    Print version\n"
+             "  -d, --detach     Run sync or watch in the background\n"
              "  -q, --quiet      Suppress informational output\n"
              "  --json           Structured output for devices, profiles, and status\n\n"
              "Examples:\n"

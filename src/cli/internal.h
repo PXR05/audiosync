@@ -9,6 +9,7 @@ int cli_profiles(int argc, char **argv, int json, int quiet);
 int cli_profile_option(const char *option);
 int cli_devices(int json);
 int cli_observe(int argc, char **argv, int json);
+int cli_update(int argc, char **argv, int quiet);
 int cli_is_terminal(FILE *stream);
 void cli_print_profile(const device_cfg_t *device, int json, int connected);
 #endif
