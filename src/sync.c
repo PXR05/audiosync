@@ -506,9 +506,13 @@ static int cmp_orphan(const void *a, const void *b) {
     return strcmp(ta->title, tb->title);
 }
 
-static int download_complete(const wchar_t *path, long long expected) {
+static int download_complete(const wchar_t *path, unsigned long long *actual) {
     unsigned long long size = 0;
-    return file_size_w(path, &size) == 0 && (expected <= 0 || size == (unsigned long long)expected);
+    if (file_size_w(path, &size) != 0 || size == 0)
+        return 0;
+    if (actual)
+        *actual = size;
+    return 1;
 }
 static void clear_run_cache(const char *dir) {
     wchar_t *root = utf8_to_wide(dir);
@@ -678,15 +682,19 @@ static int sync_remote_to(const device_cfg_t *dev, const wchar_t *wroot, const r
             snprintf(cpath, sizeof cpath, "%s\\%s.cache", tmpdir, P->id);
             wchar_t *wc = utf8_to_wide(cpath);
             unsigned long long cs = 0;
-            if (wc && file_size_w(wc, &cs) == 0 && (long long)cs == P->size && P->size > 0) {
+            if (wc && file_size_w(wc, &cs) == 0 && cs > 0) {
                 if (CopyFileW(wc, wpart, FALSE) && MoveFileExW(wpart, wdst, 0))
                     done = 1;
                 if (!done)
                     DeleteFileW(wpart);
             } else {
                 progress_bytes(0, (unsigned long long)(P->size > 0 ? P->size : 0));
+                unsigned long long received = 0;
                 if (adapter->download(session, P->id, wpart, dl_prog, NULL) == 0 &&
-                    download_complete(wpart, P->size)) {
+                    download_complete(wpart, &received)) {
+                    if (P->size > 0 && received != (unsigned long long)P->size)
+                        log_info("download size estimate differed for %s: expected %lld, received %llu",
+                                 P->rel, P->size, received);
                     if (MoveFileExW(wpart, wdst, 0)) {
                         done = 1;
                         if (wc)
@@ -709,16 +717,19 @@ static int sync_remote_to(const device_cfg_t *dev, const wchar_t *wroot, const r
                 if (!done)
                     DeleteFileW(wpart);
             } else {
-                int have_src = (ws && file_size_w(ws, &cs) == 0 && (long long)cs == P->size && P->size > 0);
+                int have_src = (ws && file_size_w(ws, &cs) == 0 && cs > 0);
                 if (!have_src) {
                     if (ws) {
                         progress_bytes(0, (unsigned long long)(P->size > 0 ? P->size : 0));
-                        if (adapter->download(session, P->id, ws, dl_prog, NULL) != 0 ||
-                            !download_complete(ws, P->size)) {
+                        int download_rc = adapter->download(session, P->id, ws, dl_prog, NULL);
+                        unsigned long long received = 0;
+                        if (download_rc != 0 || !download_complete(ws, &received)) {
                             DeleteFileW(ws);
                             free(ws);
                             ws = NULL;
-                        }
+                        } else if (P->size > 0 && received != (unsigned long long)P->size)
+                            log_info("download size estimate differed for %s: expected %lld, received %llu",
+                                     P->rel, P->size, received);
                     }
                 }
                 if (ws && file_size_w(ws, &cs) == 0) {
@@ -739,7 +750,9 @@ static int sync_remote_to(const device_cfg_t *dev, const wchar_t *wroot, const r
         }
         if (done) {
             dl_ok++;
-            man_add(&want, P->rel, P->size, P->id);
+            unsigned long long actual = 0;
+            man_add(&want, P->rel, file_size_w(wdst, &actual) == 0 ? (long long)actual : P->size,
+                    P->id);
         } else {
             dl_fail++;
             log_warn("sync failed: %s", P->rel);

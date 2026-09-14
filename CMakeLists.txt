@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-set(AUDIOSYNC_VERSION "0.1.1" CACHE STRING "AudioSync release version")
+set(AUDIOSYNC_VERSION "0.1.2" CACHE STRING "AudioSync release version")
 project(audiosync VERSION ${AUDIOSYNC_VERSION} LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

@@ -61,7 +61,8 @@ static int adapter_tracks(void *session, remote_track_t **out, int *n) {
     strcpy((*out)->title, "Song");
     strcpy((*out)->artist, "Artist");
     strcpy((*out)->album, "Album");
-    (*out)->size = 6;
+    /* Remote sizes are progress estimates, not an integrity contract. */
+    (*out)->size = 999;
     return 0;
 }
 static int adapter_download(void *session, const char *id, const wchar_t *p, remote_progress_cb cb,
@@ -71,7 +72,7 @@ static int adapter_download(void *session, const char *id, const wchar_t *p, rem
     (void)cb;
     (void)ctx;
     downloads++;
-    put(p, fail_download ? "x" : "remote");
+    put(p, fail_download == 2 ? "" : "remote");
     return fail_download == 1 ? -1 : 0;
 }
 static void adapter_disconnect(void *session) {
